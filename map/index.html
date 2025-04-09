@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>災害影響マップ | リアルタイム可視化ダッシュボード</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet" />
+  <link href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" rel="stylesheet" />
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    #map {
+      height: 70vh;
+      z-index: 0;
+    }
+    .accordion-icon {
+      transition: transform 0.3s ease;
+    }
+    .accordion-open .accordion-icon {
+      transform: rotate(180deg);
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+  <!-- Navigation -->
+  <nav class="fixed top-0 inset-x-0 bg-white shadow-sm z-50 border-b border-slate-200">
+    <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+      <div class="text-xl font-extrabold text-teal-600">災害影響マップ</div>
+      <div class="space-x-4 text-sm text-slate-600">
+        <a href="#overview" class="hover:text-teal-600">概要</a>
+        <a href="#map-section" class="hover:text-teal-600">地図</a>
+        <a href="#region-list" class="hover:text-teal-600">地域別</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="pt-24"></div>
+
+  <!-- Hero Section -->
+  <section class="bg-gradient-to-br from-white to-slate-100 py-20">
+    <div class="max-w-7xl mx-auto px-6 grid md:grid-cols-2 items-center gap-10">
+      <div>
+        <h1 class="text-4xl md:text-5xl font-extrabold leading-tight text-slate-900 mb-4">
+          リアルタイムで全国の災害影響を可視化
+        </h1>
+        <p class="text-lg text-slate-600 mb-6">
+          市区町村単位での災害情報をマップとデータで一元表示。
+        </p>
+        <a href="#map-section" class="inline-block px-6 py-3 bg-teal-600 text-white text-sm font-semibold rounded shadow hover:bg-teal-700 transition">
+          📍 地図を見る
+        </a>
+      </div>
+      <div class="hidden md:block">
+        <img src="assets/hero-decor.png" alt="装飾画像" class="rounded-xl shadow-xl max-w-md mx-auto" />
+      </div>
+    </div>
+  </section>
+
+  <!-- Overview Cards -->
+  <section id="overview" class="py-16 bg-white">
+    <div class="max-w-7xl mx-auto px-6 grid md:grid-cols-2 gap-6">
+      <div class="bg-white border border-slate-200 rounded-xl shadow p-6">
+        <div class="text-sm font-semibold text-teal-600 mb-1">🏩 全国市区町村</div>
+        <div id="city-count" class="text-3xl font-bold text-slate-800">--</div>
+      </div>
+      <div class="bg-white border border-slate-200 rounded-xl shadow p-6">
+        <div class="text-sm font-semibold text-rose-600 mb-1">👥 全国影響人口</div>
+        <div id="total-population" class="text-3xl font-bold text-slate-800">--</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Map Section -->
+  <section id="map-section" class="py-20 bg-slate-100">
+    <div class="max-w-7xl mx-auto px-6 grid md:grid-cols-3 gap-10 items-start">
+      <div class="md:col-span-2">
+        <div id="map" class="rounded-xl shadow"></div>
+        <p class="text-xs text-slate-500 mt-2">
+          🔴 赤いマーカー：影響エリア（人口に応じたサイズ）
+        </p>
+      </div>
+      <div class="text-slate-700 text-base">
+        <p class="mb-3">地図はインタラクティブに拡大・移動可能。各市区町村をクリックで詳細を確認できます。</p>
+        <p class="text-xs text-slate-400">※ データは10分ごとに自動更新されます</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Region List -->
+  <section id="region-list" class="py-20 bg-white">
+    <div class="max-w-7xl mx-auto px-6">
+      <h2 class="text-3xl font-bold text-slate-800 mb-6">🗾 地域別の影響状況</h2>
+      <input type="text" placeholder="市区町村名を検索..." class="w-full max-w-lg p-3 border border-slate-300 rounded shadow-sm mb-6 focus:outline-none focus:ring-2 focus:ring-teal-500" id="search-box" />
+      <div class="mb-4">
+        <label for="filter-type" class="block mb-1 text-sm text-slate-600">💼 災害種別で絞り込み</label>
+        <select id="filter-type" class="w-full max-w-xs p-2 border border-slate-300 rounded">
+          <option value="">すべて表示</option>
+          <option value="停電">停電</option>
+          <option value="断水">断水</option>
+          <option value="通信障害">通信障害</option>
+          <option value="避難指示">避難指示</option>
+        </select>
+      </div>
+      <div id="region-cards" class="grid md:grid-cols-2 gap-6"></div>
+    </div>
+  </section>
+
+  <footer class="py-6 text-center text-sm text-slate-500 border-t">
+    最終更新: <span id="last-updated">--</span>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
