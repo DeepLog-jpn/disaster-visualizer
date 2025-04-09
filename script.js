@@ -31,97 +31,48 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 
 let markers = [];
 let originalData = [];
+let municipalityMaster = {};
 
-fetch("impact.json")
+fetch("municipalities.json")
+  .then(res => res.json())
+  .then(master => {
+    municipalityMaster = master;
+    return fetch("impact.json");
+  })
   .then(res => res.json())
   .then(data => {
-    originalData = data;
-
-    data.forEach(d => {
-      for (const pref in regionMap) {
-        if (d.name && d.name.startsWith(pref.slice(0, 2))) {
-          d.pref = pref;
-          d.region = regionMap[pref];
-          break;
-        }
-      }
+    originalData = data.map(d => {
+      const meta = municipalityMaster[d.code] || {};
+      return {
+        ...d,
+        pref: meta.pref || "不明",
+        region: meta.region || "不明"
+      };
     });
 
-    const totalPopulation = data.reduce((sum, c) => sum + (c.population || 0), 0);
-    document.getElementById("city-count").textContent = `${data.length} 市区町村`;
+    const totalPopulation = originalData.reduce((sum, c) => sum + (c.population || 0), 0);
+    document.getElementById("city-count").textContent = `${originalData.length} 市区町村`;
     document.getElementById("total-population").textContent = `${totalPopulation.toLocaleString()} 人`;
 
-    renderMarkers(data);
+    renderMarkers(originalData);
+    renderLegend();
+    renderRegionCards(originalData);
+    updateTimestamp();
 
-    const legend = L.control({ position: 'bottomright' });
-    legend.onAdd = function () {
-      const div = L.DomUtil.create('div', 'bg-white p-3 text-sm rounded shadow border');
-      div.innerHTML = `<strong class="block mb-2 text-slate-700">📛 災害種類</strong>` +
-        Object.entries(typeColors).map(([type, color]) =>
-          `<div class="flex items-center space-x-2 mb-1">
-             <span style="background:${color};width:12px;height:12px;display:inline-block;border-radius:9999px;"></span>
-             <span class="text-slate-700">${type}</span>
-           </div>`
-        ).join("");
-      return div;
-    };
-    legend.addTo(map);
-
-    const grouped = {};
-    for (const [region, prefs] of Object.entries(regionPrefMap)) {
-      grouped[region] = {};
-      for (const pref of prefs) {
-        grouped[region][pref] = [];
-      }
-    }
-
-    data.forEach(city => {
-      if (city.region && city.pref) {
-        grouped[city.region][city.pref].push(city);
-      }
-    });
-
-    const regionCards = document.getElementById("region-cards");
-    for (const [regionName, prefs] of Object.entries(grouped)) {
-      const regionId = `region-${regionName.replace(/\s/g, '')}`;
-      const flatCities = Object.values(prefs).flat();
-      const regionPop = flatCities.reduce((sum, c) => sum + (c.population || 0), 0);
-      const regionCityCount = flatCities.length;
-
-      const card = document.createElement("div");
-      card.className = "bg-slate-50 border border-slate-200 rounded-xl shadow-sm";
-      card.innerHTML = `
-        <button class="accordion-trigger w-full px-4 py-3 text-left text-base font-semibold bg-slate-100 rounded-t-xl border-b border-slate-200 flex justify-between items-center hover:bg-slate-200 transition" data-target="${regionId}">
-          ${regionName}（${regionCityCount}市区町村・${regionPop.toLocaleString()}人）
-          <span class="accordion-icon">▾</span>
-        </button>
-        <div id="${regionId}" class="region-content hidden px-4 pb-4">
-          ${Object.entries(prefs).map(([pref, cities]) => {
-            const pop = cities.reduce((s, c) => s + (c.population || 0), 0);
-            return `<div class="py-2 border-b text-sm text-slate-600">${pref}：${cities.length}市区町村・${pop.toLocaleString()}人</div>`;
-          }).join("")}
-        </div>
-      `;
-      regionCards.appendChild(card);
-    }
-
-    document.querySelectorAll('.accordion-trigger').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const targetId = btn.getAttribute('data-target');
-        document.querySelectorAll('.region-content').forEach(div => {
-          if (div.id === targetId) {
-            div.classList.toggle('hidden');
-            btn.classList.toggle('accordion-open');
-          } else {
-            div.classList.add('hidden');
-            document.querySelector(`[data-target="${div.id}"]`)?.classList.remove('accordion-open');
+    fetch("japan.geojson")
+      .then(res => res.json())
+      .then(geojson => {
+        L.geoJSON(geojson, {
+          style: {
+            color: "#888",
+            weight: 1,
+            fillOpacity: 0.1
           }
-        });
+        }).addTo(map);
+      })
+      .catch(err => {
+        console.error("GeoJSON読み込みエラー:", err);
       });
-    });
-
-    const now = new Date().toLocaleString();
-    document.getElementById("last-updated").textContent = now;
   })
   .catch(err => {
     console.error("データ取得エラー:", err);
@@ -135,30 +86,116 @@ function renderMarkers(data) {
   data.forEach(city => {
     if (city.lat && city.lng) {
       const marker = L.circleMarker([city.lat, city.lng], {
-        radius: Math.max(6, Math.log(city.population || 1)),
+        radius: Math.max(4, Math.sqrt(city.population || 1) / 100),
         fillColor: typeColors[city.type] || "#6b7280",
         color: "#fff",
         weight: 1,
         opacity: 1,
         fillOpacity: 0.7
       })
-      .addTo(map)
-      .bindPopup(`
-        <strong>${city.name}</strong><br>
-        👥 ${city.population.toLocaleString()}人<br>
-        📛 ${city.type || "不明な影響"}
-      `);
+        .addTo(map)
+        .bindPopup(`
+          <strong>${city.name}</strong><br>
+          👥 ${city.population.toLocaleString()}人<br>
+          📛 ${city.type || "不明な影響"}
+        `);
       markers.push(marker);
     }
   });
 }
 
+function renderLegend() {
+  const legend = L.control({ position: 'bottomright' });
+  legend.onAdd = function () {
+    const div = L.DomUtil.create('div', 'bg-white p-3 text-sm rounded shadow border');
+    div.innerHTML = `<strong class="block mb-2 text-slate-700">📛 災害種類</strong>` +
+      Object.entries(typeColors).map(([type, color]) =>
+        `<div class="flex items-center space-x-2 mb-1">
+           <span style="background:${color};width:12px;height:12px;display:inline-block;border-radius:9999px;"></span>
+           <span class="text-slate-700">${type}</span>
+         </div>`
+      ).join("");
+    return div;
+  };
+  legend.addTo(map);
+}
+
+function renderRegionCards(data) {
+  const grouped = {};
+  for (const [region, prefs] of Object.entries(regionPrefMap)) {
+    grouped[region] = {};
+    for (const pref of prefs) {
+      grouped[region][pref] = [];
+    }
+  }
+
+  data.forEach(city => {
+    if (city.region && city.pref) {
+      grouped[city.region][city.pref].push(city);
+    }
+  });
+
+  const regionCards = document.getElementById("region-cards");
+  regionCards.innerHTML = "";
+
+  Object.entries(grouped).forEach(([regionName, prefs], index) => {
+    const regionId = `region-${regionName.replace(/\s/g, '')}`;
+    const isOpen = index === 0;
+    const flatCities = Object.values(prefs).flat();
+    const regionPop = flatCities.reduce((sum, c) => sum + (c.population || 0), 0);
+    const regionCityCount = flatCities.length;
+
+    const card = document.createElement("div");
+    card.className = "bg-slate-50 border border-slate-200 rounded-xl shadow-sm";
+    card.innerHTML = `
+      <button class="accordion-trigger w-full px-4 py-3 text-left text-base font-semibold bg-slate-100 rounded-t-xl border-b border-slate-200 flex justify-between items-center hover:bg-slate-200 transition ${isOpen ? 'accordion-open' : ''}" data-target="${regionId}">
+        ${regionName}（${regionCityCount}市区町村・${regionPop.toLocaleString()}人）
+        <span class="accordion-icon">▾</span>
+      </button>
+      <div id="${regionId}" class="region-content ${isOpen ? '' : 'hidden'} px-4 pb-4">
+        ${Object.entries(prefs).map(([pref, cities]) => {
+          const pop = cities.reduce((s, c) => s + (c.population || 0), 0);
+          return `<div class="py-2 border-b text-sm text-slate-600">${pref}：${cities.length}市区町村・${pop.toLocaleString()}人</div>`;
+        }).join("")}
+      </div>
+    `;
+    regionCards.appendChild(card);
+  });
+
+  document.querySelectorAll('.accordion-trigger').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetId = btn.getAttribute('data-target');
+      const content = document.getElementById(targetId);
+      content.classList.toggle('hidden');
+      btn.classList.toggle('accordion-open');
+    });
+  });
+}
+
+function updateTimestamp() {
+  const now = new Date().toLocaleString();
+  document.getElementById("last-updated").textContent = now;
+}
+
 document.getElementById("search-box").addEventListener("input", (e) => {
-  const keyword = e.target.value.trim().normalize("NFKC");
-  document.querySelectorAll(".region-content > div").forEach(el => {
-    const content = el.textContent || "";
-    const match = content.includes(keyword);
-    el.style.display = match || keyword === "" ? "block" : "none";
+  const fuse = new Fuse(originalData, {
+    keys: ["name"],
+    threshold: 0.3, // ゆるめに探す
+    ignoreLocation: true,
+    minMatchCharLength: 2
+  });
+  
+  document.getElementById("search-box").addEventListener("input", (e) => {
+    const keyword = e.target.value.trim();
+    const results = keyword ? fuse.search(keyword).map(r => r.item) : originalData;
+  
+    renderMarkers(results);
+  
+    // region-cardsのフィルタ（内容一致のみ表示）
+    document.querySelectorAll(".region-content > div").forEach(el => {
+      const content = el.textContent || "";
+      el.style.display = keyword === "" || content.includes(keyword) ? "block" : "none";
+    });
   });
 });
 
